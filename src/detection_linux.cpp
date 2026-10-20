@@ -90,15 +90,6 @@ void Stop() {
 	}
 
 	isRunning = false;
-
-	uv_mutex_destroy(&notify_mutex);
-	uv_signal_stop(&int_signal);
-	uv_signal_stop(&term_signal);
-	uv_close((uv_handle_t *) &async_handler, NULL);
-	uv_cond_destroy(&notifyDeviceHandled);
-
-	udev_monitor_unref(mon);
-	udev_unref(udev);
 }
 
 void InitDetection() {
@@ -168,8 +159,8 @@ static ListResultItem_t* GetProperties(struct udev_device* dev, ListResultItem_t
 	}
 	item->vendorId = strtol(udev_device_get_sysattr_value(dev,"idVendor"), NULL, 16);
 	item->productId = strtol(udev_device_get_sysattr_value(dev,"idProduct"), NULL, 16);
-	item->deviceAddress = strtol(udev_device_get_sysattr_value(dev,"devnum"), NULL, 16);
-	item->locationId = 0;
+	item->deviceAddress = strtol(udev_device_get_sysattr_value(dev,"devnum"), NULL, 10);
+	item->locationId = strtol(udev_device_get_sysattr_value(dev,"busnum"), NULL, 10);
 	item->locationPath = udev_device_get_sysattr_value(dev, "busnum");
  	item->locationPath += "-";
  	item->locationPath += udev_device_get_sysattr_value(dev, "devpath");
@@ -244,6 +235,15 @@ static void cbWork(uv_work_t *req) {
 			udev_device_unref(dev);
 		}
 	}
+
+	// After the loop stops running, clean up all of our references and close gracefully
+	udev_monitor_unref(mon);
+	udev_unref(udev);
+	uv_mutex_destroy(&notify_mutex);
+	uv_signal_stop(&int_signal);
+	uv_signal_stop(&term_signal);
+	uv_close((uv_handle_t *) &async_handler, NULL);
+	uv_cond_destroy(&notifyDeviceHandled);
 }
 
 static void cbAfter(uv_work_t *req, int status) {
@@ -320,15 +320,11 @@ static void BuildInitialDeviceList() {
 		if(udev_device_get_sysattr_value(dev,"serial") != NULL) {
 			item->deviceParams.serialNumber = udev_device_get_sysattr_value(dev, "serial");
 		}
-		if(udev_device_get_sysattr_value(dev,"devnum") != NULL) {
- 			item->deviceParams.deviceAddress = strtol (udev_device_get_sysattr_value(dev, "devnum"), NULL, 16);
- 		}
-		item->deviceParams.locationId = 0;
-		if(udev_device_get_sysattr_value(dev,"devpath") != NULL && udev_device_get_sysattr_value(dev,"busnum") != NULL) {
- 			item->deviceParams.locationPath = udev_device_get_sysattr_value(dev, "busnum");
- 			item->deviceParams.locationPath += "-";
- 			item->deviceParams.locationPath += udev_device_get_sysattr_value(dev,"devpath");
- 		}
+		item->deviceParams.deviceAddress = strtol(udev_device_get_sysattr_value(dev,"devnum"), NULL, 10);
+		item->deviceParams.locationId = strtol(udev_device_get_sysattr_value(dev,"busnum"), NULL, 10);
+		item->deviceParams.locationPath = udev_device_get_sysattr_value(dev, "busnum");
+		item->deviceParams.locationPath += "-";
+		item->deviceParams.locationPath += udev_device_get_sysattr_value(dev,"devpath");
 
 		item->deviceState = DeviceState_Connect;
 
